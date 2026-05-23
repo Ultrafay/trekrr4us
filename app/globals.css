@@ -1,0 +1,100 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Inter:wght@400;500;600&family=Caveat:wght@500;600&display=swap");
+
+:root {
+  --paper-grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.4 0 0 0 0 0.3 0 0 0 0 0.2 0 0 0 0.08 0'/></filter><rect width='200' height='200' filter='url(%23n)'/></svg>");
+}
+
+html, body {
+  background-color: #fdfbf6;
+  background-image: var(--paper-grain);
+  color: #1f1c17;
+  font-family: "Inter", system-ui, sans-serif;
+  min-height: 100vh;
+}
+
+.font-serif {
+  font-family: "Cormorant Garamond", Georgia, serif;
+}
+
+.font-hand {
+  font-family: "Caveat", cursive;
+}
+
+.deckle {
+  background:
+    linear-gradient(#faf6ec, #faf6ec) padding-box,
+    repeating-linear-gradient(45deg, #e8dcbe 0 2px, transparent 2px 6px) border-box;
+  border: 1px solid transparent;
+}
+
+/* Vintage card */
+.card-paper {
+  background: #faf6ec;
+  border: 1px solid #e8dcbe;
+  box-shadow:
+    0 1px 0 rgba(60, 40, 20, 0.04),
+    0 0 0 1px rgba(60, 40, 20, 0.02) inset;
+  border-radius: 6px;
+}
+
+.btn-ink {
+  background: #1f1c17;
+  color: #fdfbf6;
+  padding: 8px 18px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  transition: opacity 0.15s;
+}
+.btn-ink:hover { opacity: 0.85; }
+.btn-ink:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-ghost {
+  background: transparent;
+  color: #3a342b;
+  border: 1px solid #d9c89c;
+  padding: 7px 14px;
+  border-radius: 4px;
+  font-size: 13px;
+  transition: all 0.15s;
+}
+.btn-ghost:hover { border-color: #856a3f; background: #fdfbf6; }
+
+input.paper-input, textarea.paper-input, select.paper-input {
+  background: #fdfbf6;
+  border: 1px solid #d9c89c;
+  border-radius: 4px;
+  padding: 9px 12px;
+  font-size: 14px;
+  color: #1f1c17;
+  outline: none;
+  width: 100%;
+}
+input.paper-input:focus, textarea.paper-input:focus, select.paper-input:focus {
+  border-color: #856a3f;
+}
+
+.ornament {
+  font-family: "Cormorant Garamond", serif;
+  color: #856a3f;
+  letter-spacing: 0.3em;
+  font-size: 14px;
+}
+
+/* Subtle stamp */
+.stamp {
+  display: inline-block;
+  font-family: "Caveat", cursive;
+  font-size: 13px;
+  color: #b3437a;
+  border: 1px dashed #b3437a;
+  padding: 1px 8px;
+  border-radius: 999px;
+  transform: rotate(-2deg);
+}
+.stamp.muun { color: #856a3f; border-color: #856a3f; }
+.stamp.spidey { color: #b3437a; border-color: #b3437a; }
