@@ -1,5 +1,6 @@
 -- Run this in Supabase → SQL Editor → New Query → Run.
--- It creates the items table and Row Level Security policies.
+-- It creates the items table, Row Level Security policies, and grants.
+-- After running, go to: Supabase Dashboard → Settings → API → "Reload schema cache"
 
 create table if not exists public.items (
   id uuid primary key default gen_random_uuid(),
@@ -17,6 +18,11 @@ create table if not exists public.items (
   updated_at timestamptz default now()
 );
 
+-- Grants: required so PostgREST can see the table (fixes "schema cache" error)
+grant usage on schema public to anon, authenticated;
+grant all on public.items to authenticated;
+grant select on public.items to anon;
+
 create index if not exists items_created_at_idx on public.items (created_at desc);
 create index if not exists items_status_idx on public.items (status);
 create index if not exists items_type_idx on public.items (type);
@@ -33,7 +39,7 @@ create trigger items_updated_at
   before update on public.items
   for each row execute procedure public.set_updated_at();
 
--- Row Level Security: only authenticated users (the allowlisted ones via auth) can do anything.
+-- Row Level Security
 alter table public.items enable row level security;
 
 drop policy if exists "auth users read" on public.items;
@@ -46,7 +52,7 @@ drop policy if exists "auth users insert" on public.items;
 create policy "auth users insert"
   on public.items for insert
   to authenticated
-  with check (added_by = (auth.jwt() ->> 'email'));
+  with check (auth.uid() is not null);
 
 drop policy if exists "auth users update" on public.items;
 create policy "auth users update"

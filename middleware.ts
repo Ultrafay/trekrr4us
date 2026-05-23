@@ -25,14 +25,16 @@ export async function middleware(request: NextRequest) {
       },
     }
   );
+  // getSession reads from cookies — no network round-trip on every tap.
+  // Server components still call getUser() for cryptographic verification.
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    data: { session },
+  } = await supabase.auth.getSession();
   const path = request.nextUrl.pathname;
-  if (!user && path !== "/login" && !path.startsWith("/auth")) {
+  if (!session && path !== "/login" && !path.startsWith("/auth")) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
-  if (user && path === "/login") {
+  if (session && path === "/login") {
     return NextResponse.redirect(new URL("/", request.url));
   }
   return response;

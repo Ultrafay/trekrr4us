@@ -3,7 +3,7 @@ import type { Metadata, Viewport } from "next";
 import Nav from "@/components/Nav";
 
 export const metadata: Metadata = {
-  title: "Spideyyy 🕷️ × Muuunn 🌙 — Our Library",
+  title: "trekrr4us",
   description: "A small library, just for two.",
 };
 
