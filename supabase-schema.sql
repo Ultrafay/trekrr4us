@@ -65,3 +65,47 @@ create policy "auth users delete"
   on public.items for delete
   to authenticated
   using (true);
+
+-- item_progress: one row per (item, user) for per-person status/rating/note
+create table if not exists public.item_progress (
+  id uuid primary key default gen_random_uuid(),
+  item_id uuid not null references public.items(id) on delete cascade,
+  user_email text not null,
+  user_name text not null,
+  status text not null default 'want' check (status in ('want','in_progress','done')),
+  rating int check (rating between 0 and 5),
+  note text,
+  updated_at timestamptz default now(),
+  unique(item_id, user_email)
+);
+
+grant all on public.item_progress to authenticated;
+grant select on public.item_progress to anon;
+
+create or replace function public.set_progress_updated_at()
+returns trigger as $$
+begin new.updated_at = now(); return new; end;
+$$ language plpgsql;
+
+drop trigger if exists item_progress_updated_at on public.item_progress;
+create trigger item_progress_updated_at
+  before update on public.item_progress
+  for each row execute procedure public.set_progress_updated_at();
+
+alter table public.item_progress enable row level security;
+
+drop policy if exists "auth read progress" on public.item_progress;
+create policy "auth read progress" on public.item_progress
+  for select to authenticated using (true);
+
+drop policy if exists "auth insert progress" on public.item_progress;
+create policy "auth insert progress" on public.item_progress
+  for insert to authenticated with check (true);
+
+drop policy if exists "auth update progress" on public.item_progress;
+create policy "auth update progress" on public.item_progress
+  for update to authenticated using (true);
+
+drop policy if exists "auth delete progress" on public.item_progress;
+create policy "auth delete progress" on public.item_progress
+  for delete to authenticated using (true);

@@ -1,27 +1,47 @@
 import { createClient } from "@/lib/supabase-server";
-import { getProfile } from "@/lib/allowlist";
+import { getAllowlist, getProfile } from "@/lib/allowlist";
 import ItemCard, { Item } from "@/components/ItemCard";
 
 export const dynamic = "force-dynamic";
 
 export default async function Me() {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   const me = getProfile(user?.email);
+  const profiles = getAllowlist();
 
-  const { data: mine } = await supabase
-    .from("items")
-    .select("*")
-    .eq("added_by", user?.email || "")
-    .order("created_at", { ascending: false });
+  // Fetch current user's progress rows (for stats + item filtering)
+  const { data: myProgress } = await supabase
+    .from("item_progress")
+    .select("item_id, status, rating")
+    .eq("user_email", user?.email || "");
 
-  const finished = mine?.filter((i) => i.status === "done") || [];
-  const inProgress = mine?.filter((i) => i.status === "in_progress") || [];
-  const want = mine?.filter((i) => i.status === "want") || [];
+  const itemIds = (myProgress || []).map((p: any) => p.item_id);
 
+  let items: any[] = [];
+  if (itemIds.length > 0) {
+    const { data } = await supabase
+      .from("items")
+      .select("*, item_progress(*)")
+      .in("id", itemIds)
+      .order("created_at", { ascending: false });
+    items = data || [];
+  }
+
+  // Organise by this user's status
+  const progressMap = Object.fromEntries(
+    (myProgress || []).map((p: any) => [p.item_id, p])
+  );
+  const finished = items.filter((i) => progressMap[i.id]?.status === "done");
+  const inProgress = items.filter((i) => progressMap[i.id]?.status === "in_progress");
+  const want = items.filter((i) => progressMap[i.id]?.status === "want");
+
+  const ratedFinished = finished.filter((i) => progressMap[i.id]?.rating);
   const avg =
-    finished.filter((i) => i.rating).reduce((s, i) => s + (i.rating || 0), 0) /
-    (finished.filter((i) => i.rating).length || 1);
+    ratedFinished.reduce((s: number, i: any) => s + (progressMap[i.id]?.rating || 0), 0) /
+    (ratedFinished.length || 1);
 
   return (
     <div>
@@ -33,26 +53,58 @@ export default async function Me() {
       </div>
 
       <div className="grid grid-cols-4 gap-2 mb-10">
-        <Stat label="Added" v={String(mine?.length || 0)} />
+        <Stat label="Added" v={String(items.length)} />
         <Stat label="Done" v={String(finished.length)} />
         <Stat label="Going" v={String(inProgress.length)} />
-        <Stat label="Avg ★" v={avg ? avg.toFixed(1) : "—"} />
+        <Stat label="Avg ★" v={ratedFinished.length ? avg.toFixed(1) : "—"} />
       </div>
 
       {inProgress.length > 0 && (
         <Section title="Currently">
-          {inProgress.map((i) => <ItemCard key={i.id} item={i as Item} />)}
+          {inProgress.map((i) => (
+            <ItemCard
+              key={i.id}
+              item={i as Item}
+              currentUserEmail={user?.email || ""}
+              currentUserName={me?.name || ""}
+              profiles={profiles}
+            />
+          ))}
         </Section>
       )}
       {finished.length > 0 && (
         <Section title="Finished">
-          {finished.map((i) => <ItemCard key={i.id} item={i as Item} />)}
+          {finished.map((i) => (
+            <ItemCard
+              key={i.id}
+              item={i as Item}
+              currentUserEmail={user?.email || ""}
+              currentUserName={me?.name || ""}
+              profiles={profiles}
+            />
+          ))}
         </Section>
       )}
       {want.length > 0 && (
         <Section title="Queued">
-          {want.map((i) => <ItemCard key={i.id} item={i as Item} />)}
+          {want.map((i) => (
+            <ItemCard
+              key={i.id}
+              item={i as Item}
+              currentUserEmail={user?.email || ""}
+              currentUserName={me?.name || ""}
+              profiles={profiles}
+            />
+          ))}
         </Section>
+      )}
+
+      {items.length === 0 && (
+        <div className="card-paper p-8 text-center">
+          <p className="font-serif italic text-ink-400">
+            Your shelf is empty — head to Add to get started.
+          </p>
+        </div>
       )}
     </div>
   );

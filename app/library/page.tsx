@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase-server";
+import { getAllowlist, getProfile } from "@/lib/allowlist";
 import ItemCard, { Item } from "@/components/ItemCard";
 import Link from "next/link";
 
@@ -21,13 +22,43 @@ export default async function Library({
 }) {
   const filter = searchParams.filter || "all";
   const supabase = createClient();
-  let query = supabase.from("items").select("*").order("created_at", { ascending: false });
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const profile = getProfile(user?.email);
+  const profiles = getAllowlist();
+
+  let items: any[] = [];
+
   if (["movie", "series", "book"].includes(filter)) {
-    query = query.eq("type", filter);
+    const { data } = await supabase
+      .from("items")
+      .select("*, item_progress(*)")
+      .eq("type", filter)
+      .order("created_at", { ascending: false });
+    items = data || [];
   } else if (["want", "in_progress", "done"].includes(filter)) {
-    query = query.eq("status", filter);
+    // Two-step: find item IDs with this status (any user), then fetch with full progress
+    const { data: matchingProgress } = await supabase
+      .from("item_progress")
+      .select("item_id")
+      .eq("status", filter);
+    const itemIds = [...new Set((matchingProgress || []).map((p: any) => p.item_id))];
+    if (itemIds.length > 0) {
+      const { data } = await supabase
+        .from("items")
+        .select("*, item_progress(*)")
+        .in("id", itemIds)
+        .order("created_at", { ascending: false });
+      items = data || [];
+    }
+  } else {
+    const { data } = await supabase
+      .from("items")
+      .select("*, item_progress(*)")
+      .order("created_at", { ascending: false });
+    items = data || [];
   }
-  const { data: items } = await query;
 
   return (
     <div>
@@ -50,13 +81,21 @@ export default async function Library({
         ))}
       </div>
 
-      {!items || items.length === 0 ? (
+      {items.length === 0 ? (
         <div className="card-paper p-8 text-center">
           <p className="font-serif italic text-ink-400">Nothing in this view.</p>
         </div>
       ) : (
         <div className="space-y-3">
-          {items.map((i) => <ItemCard key={i.id} item={i as Item} />)}
+          {items.map((i) => (
+            <ItemCard
+              key={i.id}
+              item={i as Item}
+              currentUserEmail={user?.email || ""}
+              currentUserName={profile?.name || ""}
+              profiles={profiles}
+            />
+          ))}
         </div>
       )}
     </div>

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase-server";
-import { getProfile } from "@/lib/allowlist";
+import { getAllowlist, getProfile } from "@/lib/allowlist";
 import ItemCard, { Item } from "@/components/ItemCard";
 
 export const dynamic = "force-dynamic";
@@ -11,10 +11,11 @@ export default async function Home() {
     data: { user },
   } = await supabase.auth.getUser();
   const profile = getProfile(user?.email);
+  const profiles = getAllowlist();
 
   const { data: items } = await supabase
     .from("items")
-    .select("*")
+    .select("*, item_progress(*)")
     .order("created_at", { ascending: false })
     .limit(20);
 
@@ -60,7 +61,13 @@ export default async function Home() {
       ) : (
         <div className="space-y-2.5">
           {all.map((i) => (
-            <ItemCard key={i.id} item={i as Item} />
+            <ItemCard
+              key={i.id}
+              item={i as Item}
+              currentUserEmail={user?.email || ""}
+              currentUserName={profile?.name || ""}
+              profiles={profiles}
+            />
           ))}
         </div>
       )}

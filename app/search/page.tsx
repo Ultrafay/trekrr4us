@@ -28,7 +28,34 @@ export default function SearchPage() {
   const [adding, setAdding] = useState<string | null>(null);
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ email: string; name: string } | null>(null);
 
+  // On mount: load user + pre-populate already-added external_ids
+  useEffect(() => {
+    (async () => {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user?.email) return;
+
+      const pres = await fetch(`/api/profile?email=${encodeURIComponent(user.email)}`);
+      const p = await pres.json();
+      setCurrentUser({ email: user.email, name: p.name || user.email });
+
+      // Fetch external_ids the user already has in their progress
+      const { data: progress } = await supabase
+        .from("item_progress")
+        .select("item_id, items(external_id)")
+        .eq("user_email", user.email);
+      const ids = new Set(
+        (progress || []).map((r: any) => r.items?.external_id).filter(Boolean)
+      );
+      setAddedIds(ids);
+    })();
+  }, []);
+
+  // Search with 300ms debounce
   useEffect(() => {
     if (!q.trim()) {
       setResults([]);
@@ -37,7 +64,9 @@ export default function SearchPage() {
     const t = setTimeout(async () => {
       setLoading(true);
       try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&type=${type}`);
+        const res = await fetch(
+          `/api/search?q=${encodeURIComponent(q)}&type=${type}`
+        );
         const data = await res.json();
         setResults(data.results || []);
       } catch {
@@ -49,59 +78,77 @@ export default function SearchPage() {
   }, [q, type]);
 
   async function add(r: Result) {
-    setError(null);
-    setAdding(r.external_id);
-    // Optimistic: mark as added immediately
-    setAddedIds((s) => new Set(s).add(r.external_id));
-
-    const supabase = createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    const email = user?.email;
-
-    if (!email) {
-      setError("Not signed in. Reload the page.");
-      setAdding(null);
-      setAddedIds((s) => {
-        const n = new Set(s);
-        n.delete(r.external_id);
-        return n;
-      });
+    if (!currentUser) {
+      setError("Still loading profile, please wait…");
       return;
     }
+    setError(null);
+    setAdding(r.external_id);
+    setAddedIds((s) => new Set(s).add(r.external_id)); // optimistic
 
-    // Get name from session metadata or just derive from email
-    let name = "User";
+    const supabase = createClient();
     try {
-      const pres = await fetch(`/api/profile?email=${encodeURIComponent(email)}`);
-      const p = await pres.json();
-      name = p.name || email;
-    } catch {}
+      // Check if item already exists by external_id
+      const { data: existing } = await supabase
+        .from("items")
+        .select("id")
+        .eq("external_id", r.external_id)
+        .maybeSingle();
 
-    const { error: insertError } = await supabase.from("items").insert({
-      title: r.title,
-      type: r.type,
-      year: r.year,
-      cover_url: r.cover_url,
-      external_id: r.external_id,
-      status: "want",
-      added_by: email,
-      added_by_name: name,
-    });
+      let itemId: string;
 
-    setAdding(null);
+      if (existing) {
+        // Item exists — check if current user already has a progress row
+        const { data: existingProgress } = await supabase
+          .from("item_progress")
+          .select("id")
+          .eq("item_id", existing.id)
+          .eq("user_email", currentUser.email)
+          .maybeSingle();
+        if (existingProgress) {
+          // Already in their list, nothing to do
+          setAdding(null);
+          return;
+        }
+        itemId = existing.id;
+      } else {
+        // Insert new shared item row
+        const { data: newItem, error: itemErr } = await supabase
+          .from("items")
+          .insert({
+            title: r.title,
+            type: r.type,
+            year: r.year,
+            cover_url: r.cover_url,
+            external_id: r.external_id,
+            added_by: currentUser.email,
+            added_by_name: currentUser.name,
+          })
+          .select("id")
+          .single();
+        if (itemErr) throw itemErr;
+        itemId = newItem.id;
+      }
 
-    if (insertError) {
-      // Rollback optimistic update
+      // Insert progress row for the current user
+      const { error: progressErr } = await supabase.from("item_progress").insert({
+        item_id: itemId,
+        user_email: currentUser.email,
+        user_name: currentUser.name,
+        status: "want",
+      });
+      if (progressErr) throw progressErr;
+
+      router.refresh();
+    } catch (e: any) {
       setAddedIds((s) => {
         const n = new Set(s);
         n.delete(r.external_id);
         return n;
       });
-      setError(`Could not add: ${insertError.message}`);
-    } else {
-      router.refresh();
+      setError(`Could not add: ${e.message}`);
+    } finally {
+      setAdding(null);
     }
   }
 
@@ -139,7 +186,7 @@ export default function SearchPage() {
       </div>
 
       {error && (
-        <div className="card-paper p-3 mb-4 border-accent-rose">
+        <div className="card-paper p-3 mb-4">
           <p className="text-sm text-accent-rose">{error}</p>
         </div>
       )}
@@ -149,7 +196,6 @@ export default function SearchPage() {
           searching…
         </p>
       )}
-
       {!loading && q && results.length === 0 && (
         <p className="text-center text-ink-400 italic font-serif text-sm py-4">
           No results.
@@ -177,9 +223,7 @@ export default function SearchPage() {
                 <h3 className="font-serif text-base sm:text-lg text-ink-800 leading-tight">
                   {r.title}
                   {r.year && (
-                    <span className="text-ink-200 text-xs sm:text-sm ml-2">
-                      ({r.year})
-                    </span>
+                    <span className="text-ink-200 text-xs sm:text-sm ml-2">({r.year})</span>
                   )}
                 </h3>
                 <div className="text-xs text-ink-400 capitalize">{r.type}</div>
@@ -193,9 +237,7 @@ export default function SearchPage() {
                 onClick={() => add(r)}
                 disabled={isAdding || isAdded}
                 className={`text-xs self-center px-3 py-2 rounded transition-all ${
-                  isAdded
-                    ? "bg-accent-moss text-paper-50"
-                    : "btn-ink"
+                  isAdded ? "bg-accent-moss text-paper-50" : "btn-ink"
                 }`}
               >
                 {isAdded ? "Added ✓" : isAdding ? "…" : "Add"}
