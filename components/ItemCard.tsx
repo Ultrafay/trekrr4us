@@ -31,89 +31,123 @@ const STATUS_LABEL: Record<Status, string> = {
   done: "Done",
 };
 
-function ProgressFor(type: Item["type"]): string {
+function progressFor(type: Item["type"]): string {
   return type === "book" ? "Reading" : "Watching";
 }
 
-export default function ItemCard({ item, onChange }: { item: Item; onChange?: () => void }) {
+export default function ItemCard({ item }: { item: Item }) {
   const router = useRouter();
-  const [busy, start] = useTransition();
+  const [, start] = useTransition();
+  // Local optimistic state
+  const [localItem, setLocalItem] = useState(item);
+  const [hidden, setHidden] = useState(false);
   const [editing, setEditing] = useState(false);
   const [rating, setRating] = useState(item.rating || 0);
   const [note, setNote] = useState(item.note || "");
+  const [err, setErr] = useState<string | null>(null);
+
+  if (hidden) return null;
 
   async function setStatus(status: Status) {
+    setErr(null);
+    const prev = localItem.status;
+    setLocalItem({ ...localItem, status });
     const supabase = createClient();
-    start(async () => {
-      await supabase.from("items").update({ status }).eq("id", item.id);
-      router.refresh();
-      onChange?.();
-    });
+    const { error } = await supabase
+      .from("items")
+      .update({ status })
+      .eq("id", localItem.id);
+    if (error) {
+      setLocalItem({ ...localItem, status: prev });
+      setErr(error.message);
+    } else {
+      start(() => router.refresh());
+    }
   }
 
   async function saveReview() {
+    setErr(null);
+    const prev = { ...localItem };
+    setLocalItem({ ...localItem, status: "done", rating, note });
+    setEditing(false);
     const supabase = createClient();
-    start(async () => {
-      await supabase
-        .from("items")
-        .update({ status: "done", rating, note })
-        .eq("id", item.id);
-      setEditing(false);
-      router.refresh();
-      onChange?.();
-    });
+    const { error } = await supabase
+      .from("items")
+      .update({ status: "done", rating, note })
+      .eq("id", localItem.id);
+    if (error) {
+      setLocalItem(prev);
+      setErr(error.message);
+    } else {
+      start(() => router.refresh());
+    }
   }
 
   async function remove() {
     if (!confirm("Remove this from the library?")) return;
+    setErr(null);
+    setHidden(true);
     const supabase = createClient();
-    start(async () => {
-      await supabase.from("items").delete().eq("id", item.id);
-      router.refresh();
-      onChange?.();
-    });
+    const { error } = await supabase.from("items").delete().eq("id", localItem.id);
+    if (error) {
+      setHidden(false);
+      setErr(error.message);
+    } else {
+      start(() => router.refresh());
+    }
   }
 
+  const isMuun = localItem.added_by_name?.toLowerCase().includes("muu");
+
   return (
-    <div className="card-paper p-4 flex gap-4">
-      <div className="w-20 h-28 flex-shrink-0 bg-paper-200 rounded overflow-hidden">
-        {item.cover_url ? (
+    <div className="card-paper p-3 sm:p-4 flex gap-3 sm:gap-4">
+      <div className="w-16 h-24 sm:w-20 sm:h-28 flex-shrink-0 bg-paper-200 rounded overflow-hidden">
+        {localItem.cover_url ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={item.cover_url} alt={item.title} className="w-full h-full object-cover" />
+          <img
+            src={localItem.cover_url}
+            alt={localItem.title}
+            className="w-full h-full object-cover"
+            loading="lazy"
+          />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-paper-500 text-xs">
+          <div className="w-full h-full flex items-center justify-center text-paper-500 text-[10px]">
             no cover
           </div>
         )}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <h3 className="font-serif text-xl text-ink-800 leading-tight">
-              {item.title}
-              {item.year && <span className="text-ink-200 text-sm ml-2">({item.year})</span>}
+        <div className="flex items-start justify-between gap-2 flex-wrap">
+          <div className="min-w-0 flex-1">
+            <h3 className="font-serif text-lg sm:text-xl text-ink-800 leading-tight">
+              {localItem.title}
+              {localItem.year && (
+                <span className="text-ink-200 text-xs sm:text-sm ml-2">
+                  ({localItem.year})
+                </span>
+              )}
             </h3>
             <div className="text-xs text-ink-400 mt-0.5">
-              {TYPE_LABEL[item.type]} · {STATUS_LABEL[item.status]}
+              {TYPE_LABEL[localItem.type]} · {STATUS_LABEL[localItem.status]}
             </div>
           </div>
-          <span
-            className={`stamp ${item.added_by_name?.toLowerCase().includes("muu") ? "muun" : "spidey"}`}
-          >
-            {item.added_by_name}
+          <span className={`stamp ${isMuun ? "muun" : "spidey"} flex-shrink-0`}>
+            {localItem.added_by_name}
           </span>
         </div>
 
-        {item.rating ? (
-          <div className="text-amber-700 text-sm mt-2 tracking-widest">
-            {"★".repeat(item.rating)}
-            <span className="text-paper-400">{"★".repeat(5 - item.rating)}</span>
+        {localItem.rating ? (
+          <div className="text-amber-700 text-sm mt-1.5 tracking-widest">
+            {"★".repeat(localItem.rating)}
+            <span className="text-paper-400">
+              {"★".repeat(5 - localItem.rating)}
+            </span>
           </div>
         ) : null}
 
-        {item.note && (
+        {localItem.note && (
           <p className="font-serif italic text-ink-400 mt-2 text-sm leading-snug">
-            &ldquo;{item.note}&rdquo;
+            &ldquo;{localItem.note}&rdquo;
           </p>
         )}
 
@@ -124,7 +158,9 @@ export default function ItemCard({ item, onChange }: { item: Item; onChange?: ()
                 <button
                   key={n}
                   onClick={() => setRating(n)}
-                  className={`text-2xl leading-none ${n <= rating ? "text-amber-600" : "text-paper-400"}`}
+                  className={`text-2xl leading-none ${
+                    n <= rating ? "text-amber-600" : "text-paper-400"
+                  }`}
                 >
                   ★
                 </button>
@@ -138,7 +174,7 @@ export default function ItemCard({ item, onChange }: { item: Item; onChange?: ()
               rows={2}
             />
             <div className="flex gap-2">
-              <button onClick={saveReview} disabled={busy} className="btn-ink text-xs">
+              <button onClick={saveReview} className="btn-ink text-xs">
                 Save
               </button>
               <button onClick={() => setEditing(false)} className="btn-ghost text-xs">
@@ -147,27 +183,29 @@ export default function ItemCard({ item, onChange }: { item: Item; onChange?: ()
             </div>
           </div>
         ) : (
-          <div className="mt-3 flex gap-2 flex-wrap">
-            {item.status === "want" && (
-              <button onClick={() => setStatus("in_progress")} disabled={busy} className="btn-ghost text-xs">
-                Start {ProgressFor(item.type).toLowerCase()}
+          <div className="mt-3 flex gap-1.5 flex-wrap">
+            {localItem.status === "want" && (
+              <button onClick={() => setStatus("in_progress")} className="btn-ghost text-xs">
+                Start {progressFor(localItem.type).toLowerCase()}
               </button>
             )}
-            {item.status !== "done" && (
-              <button onClick={() => setEditing(true)} disabled={busy} className="btn-ink text-xs">
+            {localItem.status !== "done" && (
+              <button onClick={() => setEditing(true)} className="btn-ink text-xs">
                 Mark done
               </button>
             )}
-            {item.status === "done" && (
-              <button onClick={() => setEditing(true)} disabled={busy} className="btn-ghost text-xs">
+            {localItem.status === "done" && (
+              <button onClick={() => setEditing(true)} className="btn-ghost text-xs">
                 Edit review
               </button>
             )}
-            <button onClick={remove} disabled={busy} className="btn-ghost text-xs">
+            <button onClick={remove} className="btn-ghost text-xs">
               Remove
             </button>
           </div>
         )}
+
+        {err && <p className="text-xs text-accent-rose mt-2">{err}</p>}
       </div>
     </div>
   );
