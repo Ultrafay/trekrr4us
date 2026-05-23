@@ -1,38 +1,43 @@
 "use client";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase-browser";
+import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
-  const [sent, setSent] = useState(false);
+  const [password, setPassword] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function send(e: React.FormEvent) {
+  async function signIn(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
     setLoading(true);
-    // Server-side allowlist check
+
+    // Server-side allowlist check first
     const check = await fetch("/api/auth/check", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email }),
     });
     if (!check.ok) {
-      setErr("This email is not on the allowlist.");
+      setErr("This email is not allowed.");
       setLoading(false);
       return;
     }
+
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithOtp({
+    const { error } = await supabase.auth.signInWithPassword({
       email,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+      password,
     });
     setLoading(false);
     if (error) {
       setErr(error.message);
     } else {
-      setSent(true);
+      router.push("/");
+      router.refresh();
     }
   }
 
@@ -44,35 +49,43 @@ export default function LoginPage() {
         a small library, just for two
       </p>
 
-      {sent ? (
-        <div className="card-paper p-6">
-          <p className="font-serif text-lg text-ink-800 mb-2">Check your email.</p>
-          <p className="text-sm text-ink-400">
-            Tap the magic link we sent to <strong>{email}</strong>.
-          </p>
-        </div>
-      ) : (
-        <form onSubmit={send} className="card-paper p-6 text-left">
-          <label className="text-xs uppercase tracking-wider text-ink-400 mb-2 block">
-            Your email
-          </label>
-          <input
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@email.com"
-            className="paper-input mb-4"
-          />
-          <button type="submit" disabled={loading} className="btn-ink w-full">
-            {loading ? "Sending…" : "Send magic link"}
-          </button>
-          {err && <p className="text-sm text-accent-rose mt-3">{err}</p>}
-          <p className="text-xs text-ink-200 mt-4 text-center font-hand text-base">
-            only Spideyyy 🕷️ &amp; Muuunn 🌙
-          </p>
-        </form>
-      )}
+      <form onSubmit={signIn} className="card-paper p-6 text-left">
+        <label className="text-xs uppercase tracking-wider text-ink-400 mb-2 block">
+          Email
+        </label>
+        <input
+          type="email"
+          required
+          autoComplete="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="you@email.com"
+          className="paper-input mb-4"
+        />
+
+        <label className="text-xs uppercase tracking-wider text-ink-400 mb-2 block">
+          Password
+        </label>
+        <input
+          type="password"
+          required
+          autoComplete="current-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="••••••••"
+          className="paper-input mb-4"
+        />
+
+        <button type="submit" disabled={loading} className="btn-ink w-full">
+          {loading ? "Signing in…" : "Sign in"}
+        </button>
+
+        {err && <p className="text-sm text-accent-rose mt-3">{err}</p>}
+
+        <p className="text-xs text-ink-200 mt-6 text-center font-hand text-base">
+          only Spideyyy 🕷️ &amp; Muuunn 🌙
+        </p>
+      </form>
     </div>
   );
 }
